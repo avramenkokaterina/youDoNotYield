@@ -45,6 +45,9 @@ export default function HistoryPage() {
           </div>
 
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {log.steps != null && (
+              <span className="text-xs bg-sky-50 text-sky-600 px-2 py-0.5 rounded-full">👟 {log.steps.toLocaleString()}</span>
+            )}
             {log.periodDay != null && (
               <span className="text-xs bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full">🌸 Day {log.periodDay}</span>
             )}

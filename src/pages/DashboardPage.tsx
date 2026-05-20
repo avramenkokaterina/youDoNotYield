@@ -155,6 +155,42 @@ export default function DashboardPage() {
   // ── Scatter calories vs weight ─────────────────────────────────────────────
   const scatter = scatterCaloriesWeight(filteredLogs);
 
+  // ── Steps ──────────────────────────────────────────────────────────────────
+  const withSteps = filteredLogs.filter(l => l.steps != null);
+  const avgSteps = withSteps.length > 0
+    ? Math.round(withSteps.reduce((s, l) => s + l.steps!, 0) / withSteps.length)
+    : null;
+
+  const stepsChartData = filteredLogs
+    .filter(l => l.steps != null)
+    .map(l => ({ date: shortDate(l.date), steps: l.steps, weight: l.weight }));
+
+  const stepsBuckets = (() => {
+    const buckets: Record<string, { total: number; count: number }> = {
+      '<5k': { total: 0, count: 0 },
+      '5-8k': { total: 0, count: 0 },
+      '8-10k': { total: 0, count: 0 },
+      '10-15k': { total: 0, count: 0 },
+      '>15k': { total: 0, count: 0 },
+    };
+    for (let i = 1; i < withWeight.length; i++) {
+      const prev = withWeight[i - 1];
+      if (prev.steps == null) continue;
+      const change = withWeight[i].weight! - prev.weight!;
+      const s = prev.steps;
+      const key = s < 5000 ? '<5k' : s < 8000 ? '5-8k' : s < 10000 ? '8-10k' : s < 15000 ? '10-15k' : '>15k';
+      buckets[key].total += change;
+      buckets[key].count++;
+    }
+    return Object.entries(buckets)
+      .filter(([, v]) => v.count > 0)
+      .map(([bucket, v]) => ({ bucket, avgChange: parseFloat((v.total / v.count).toFixed(3)), count: v.count }));
+  })();
+
+  const stepsWeightScatter = filteredLogs
+    .filter(l => l.steps != null && l.weight != null)
+    .map(l => ({ steps: l.steps!, weight: l.weight!, date: l.date }));
+
   // ── Measurements trend ─────────────────────────────────────────────────────
   const measChartData = measurements.map(m => ({
     date: shortDate(m.date),
@@ -204,7 +240,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard
           title="Weight change"
           value={totalLost != null ? `${totalLost > 0 ? '+' : ''}${totalLost.toFixed(1)} kg` : '—'}
@@ -222,6 +258,12 @@ export default function DashboardPage() {
           value={String(trainingDays)}
           sub={`of ${filteredLogs.length} days`}
           color={COLORS.indigo}
+        />
+        <StatCard
+          title="Avg steps"
+          value={avgSteps != null ? avgSteps.toLocaleString() : '—'}
+          sub="steps / day"
+          color={COLORS.emerald}
         />
         <StatCard
           title="Waist"
@@ -414,6 +456,73 @@ export default function DashboardPage() {
                 );
               }} />
               <Scatter data={scatter} fill={COLORS.indigo} opacity={0.7} />
+            </ScatterChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Steps over time ── */}
+      <SectionTitle>Steps Over Time</SectionTitle>
+      <div className="bg-white rounded-2xl shadow-sm p-4">
+        {stepsChartData.length < 2 ? <NoData /> : (
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={stepsChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="steps" orientation="left" tick={{ fontSize: 11 }} width={45} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+              <YAxis yAxisId="kg" orientation="right" domain={['auto', 'auto']} tick={{ fontSize: 11 }} width={40} />
+              <Tooltip formatter={(v, name) => name === 'Steps' ? [Number(v).toLocaleString()] : [`${v} kg`]} />
+              <Legend />
+              <ReferenceLine yAxisId="steps" y={10000} stroke={COLORS.emerald} strokeDasharray="4 2" label={{ value: '10k goal', fontSize: 10, fill: COLORS.emerald }} />
+              <Line yAxisId="steps" type="monotone" dataKey="steps" stroke={COLORS.sky} dot={{ r: 2 }} strokeWidth={2} name="Steps" />
+              <Line yAxisId="kg" type="monotone" dataKey="weight" stroke={COLORS.indigo} dot={false} strokeWidth={1.5} strokeDasharray="4 2" name="Weight (kg)" />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Steps bucket correlation ── */}
+      <SectionTitle>Next-Day Weight Change by Steps</SectionTitle>
+      <div className="bg-white rounded-2xl shadow-sm p-4">
+        {stepsBuckets.length < 2 ? <NoData /> : (
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={stepsBuckets}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="bucket" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={v => `${v > 0 ? '+' : ''}${v}`} tick={{ fontSize: 11 }} width={45} />
+              <Tooltip formatter={(v) => { const n = Number(v); return [`${n > 0 ? '+' : ''}${n.toFixed(3)} kg avg next-day change`]; }} />
+              <ReferenceLine y={0} stroke="#999" />
+              <Bar dataKey="avgChange" name="Avg Δ next day">
+                {stepsBuckets.map((entry, i) => (
+                  <Cell key={i} fill={entry.avgChange < 0 ? COLORS.emerald : COLORS.rose} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── Steps vs weight scatter ── */}
+      <SectionTitle>Steps vs Weight (Scatter)</SectionTitle>
+      <div className="bg-white rounded-2xl shadow-sm p-4">
+        {stepsWeightScatter.length < 5 ? <NoData /> : (
+          <ResponsiveContainer width="100%" height={200}>
+            <ScatterChart>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="steps" name="Steps" tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} label={{ value: 'Steps', position: 'insideBottom', offset: -5, fontSize: 11 }} />
+              <YAxis dataKey="weight" name="Weight" tick={{ fontSize: 11 }} width={40} label={{ value: 'kg', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ payload }) => {
+                if (!payload?.length) return null;
+                const d = payload[0].payload;
+                return (
+                  <div className="bg-white border border-gray-100 rounded-xl shadow px-3 py-2 text-xs">
+                    <p>{d.date}</p>
+                    <p>👟 {d.steps.toLocaleString()} steps</p>
+                    <p>⚖️ {d.weight} kg</p>
+                  </div>
+                );
+              }} />
+              <Scatter data={stepsWeightScatter} fill={COLORS.sky} opacity={0.7} />
             </ScatterChart>
           </ResponsiveContainer>
         )}

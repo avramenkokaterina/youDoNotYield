@@ -3,6 +3,7 @@ export interface DailyLog {
   weight?: number; // kg
   periodDay?: number; // 1-35, undefined if not applicable
   calories?: number;
+  steps?: number;
   hadTraining: boolean;
   notes: {
     alcohol: boolean;
